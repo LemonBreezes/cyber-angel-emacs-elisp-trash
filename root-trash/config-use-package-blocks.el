@@ -125,3 +125,15 @@
 (use-package! outline-minor-faces
   :defer t :init
   (add-hook 'outline-minor-mode-hook #'outline-minor-faces-mode))
+
+(use-package! wakatime-mode
+  :when (or (executable-find "wakatime")
+            (executable-find "wakatime-cli"))
+  :defer t :init
+  (add-hook 'doom-first-file-hook #'global-wakatime-mode)
+  :config
+  (setq wakatime-cli-path (or (executable-find "wakatime")
+                              (executable-find "wakatime-cli")))
+  (defadvice! cae-wakatime-handle-remote-files-a (_)
+    :before-until #'wakatime-call
+    (tramp-tramp-file-p (buffer-file-name (current-buffer)))))
