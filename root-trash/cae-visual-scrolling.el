@@ -1,59 +1,52 @@
 ;;; lisp/cae-visual-scrolling.el -*- lexical-binding: t; -*-
 
-;; This code was copied from here:
-;; https://web.archive.org/web/20221002160330/https://with-emacs.com/posts/ui-hacks/keep-scrollin-scrollin-scrollin/
-;; I like these scrolling functions a lot.
+(defun cae-scroll-with-highlight (scroll-fn direction &optional arg)
+  "Highlight the appropriate line before calling SCROLL-FN with ARGS.
+DIRECTION should be 'up or 'down."
+  (if (or arg
+          (cl-some (lambda (x) (and (boundp x) (symbol-value x)))
+                   '(executing-kbd-macro)))
+      ;; Passthrough for specified conditions.
+      (funcall scroll-fn arg)
+    (let ((pos (if (eq direction 'down) (1- (window-end)) (window-start)))
+          (pulse-delay 0.1))
+      (pulse-momentary-highlight-one-line pos 'highlight)
+      (sit-for 0.1)
+      (funcall scroll-fn arg))))
+
+(defmacro cae-advise-scroll (func direction)
+  "Add around advice to FUNC to highlight line before scrolling in DIRECTION."
+  `(advice-add #',func :around (lambda (f &optional arg)
+                                 (cae-scroll-with-highlight f ',direction arg))))
+
+;; Advise scrolling functions to include line highlighting.
+(cae-advise-scroll evil-scroll-down down)
+(cae-advise-scroll evil-scroll-up up)
+(cae-advise-scroll View-scroll-half-page-forward down)
+(cae-advise-scroll View-scroll-half-page-backward up)
 
 (autoload 'View-scroll-half-page-forward "view")
 (autoload 'View-scroll-half-page-backward "view")
 
-;; Some modes remap `scroll-down-command', etc rather than binding the keys directly.
-;;(map! "C-v" #'View-scroll-half-page-forward
-;;      "M-v" #'View-scroll-half-page-backward
-;;      "C-M-v" #'my-View-scroll-half-page-forward-other-window
-;;      "C-M-S-v" #'my-View-scroll-half-page-backward-other-window)
+;; Remap standard scroll commands to use half-page scrolling.
+(global-set-key [remap scroll-up-command] 'View-scroll-half-page-forward)
+(global-set-key [remap scroll-down-command] 'View-scroll-half-page-backward)
+(global-set-key [remap scroll-other-window] 'cae-view-scroll-half-page-forward-other-window)
+(global-set-key [remap scroll-other-window-down] 'cae-view-scroll-half-page-backward-other-window)
 
-(map! [remap scroll-up-command] #'View-scroll-half-page-forward
-      [remap scroll-down-command] #'View-scroll-half-page-backward
-      [remap scroll-other-window] #'my-View-scroll-half-page-forward-other-window
-      [remap scroll-other-window-down] #'my-View-scroll-half-page-backward-other-window)
-
-(defun my-View-scroll-half-page-forward-other-window ()
+(defun cae-view-scroll-half-page-forward-other-window ()
+  "Scroll half a page forward in the next window."
   (interactive)
   (with-selected-window (next-window)
     (call-interactively 'View-scroll-half-page-forward)))
 
-(defun my-View-scroll-half-page-backward-other-window ()
+(defun cae-view-scroll-half-page-backward-other-window ()
+  "Scroll half a page backward in the next window."
   (interactive)
   (with-selected-window (next-window)
     (call-interactively 'View-scroll-half-page-backward)))
 
-(advice-add #'View-scroll-half-page-forward :around
-            #'my-indicate-scroll-forward)
-
-(advice-add #'View-scroll-half-page-backward :around
-            #'my-indicate-scroll-backward)
-
-(defun my-indicate-scroll-get-line (pos)
-  (save-excursion
-    (goto-char pos)
-    (string-to-number (format-mode-line "%l"))))
-
-(defun my-indicate-scroll (linep f args)
-  (let ((linen (my-indicate-scroll-get-line linep))
-        (pulse-delay 0.1))
-    (save-excursion
-      (goto-line linen)
-      (pulse-momentary-highlight-one-line (point) 'highlight))
-    (sit-for 0.1)
-    (apply f args)))
-
-(defun my-indicate-scroll-forward (f &rest args)
-  (my-indicate-scroll (1- (window-end)) f args))
-
-(defun my-indicate-scroll-backward (f &rest args)
-  (my-indicate-scroll (window-start) f args))
-
+;; Define repeat maps for scrolling commands.
 (after! repeat
   (define-repeat-map View-scroll-half-page-forward
     ("v" View-scroll-half-page-forward)
@@ -61,9 +54,9 @@
   (define-repeat-map View-scroll-half-page-backward
     ("v" View-scroll-half-page-backward)
     (:exit "V" View-scroll-half-page-forward))
-  (define-repeat-map my-View-scroll-half-page-forward-other-window
-    ("v" my-View-scroll-half-page-forward-other-window)
-    (:exit "V" my-View-scroll-half-page-backward-other-window))
-  (define-repeat-map my-View-scroll-half-page-backward-other-window
-    ("v" my-View-scroll-half-page-backward-other-window)
-    (:exit "V" my-View-scroll-half-page-forward-other-window)))
+  (define-repeat-map cae-View-scroll-half-page-forward-other-window
+    ("v" cae-View-scroll-half-page-forward-other-window)
+    (:exit "V" cae-View-scroll-half-page-backward-other-window))
+  (define-repeat-map cae-View-scroll-half-page-backward-other-window
+    ("v" cae-View-scroll-half-page-backward-other-window)
+    (:exit "V" cae-View-scroll-half-page-forward-other-window)))
